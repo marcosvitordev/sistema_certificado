@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Cadastro – CES</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100">
+
+<aside class="fixed top-0 left-0 w-64 h-full bg-gray-900 text-white p-6">
+    <h2 class="text-2xl font-bold mb-6">Sistema CES</h2>
+
+    <nav class="space-y-3">
+        <a href="/dashboard" class="block px-4 py-2 hover:bg-gray-700 rounded">📊 Dashboard</a>
+        <a href="/cadastro" class="block px-4 py-2 bg-gray-700 rounded">➕ Cadastro</a>
+
+        <form action="/logout" method="POST">
+            <button class="mt-6 w-full bg-red-600 py-2 rounded hover:bg-red-700">
+                🚪 Sair
+            </button>
+        </form>
+    </nav>
+</aside>
+
+<main class="ml-64 p-8">
+
+    <h1 class="text-3xl font-bold mb-6">Cadastrar Aluno</h1>
+
+    <div class="bg-white shadow rounded p-6 max-w-lg">
+
+        <form id="cadastro-form" class="space-y-4">
+
+            <div>
+                <label>Nome</label>
+                <input id="nome_aluno" type="text" required
+                       class="w-full px-3 py-2 border rounded">
+            </div>
+
+            <div>
+                <label>Data início</label>
+                <input id="data_inicio" type="date" required
+                       class="w-full px-3 py-2 border rounded">
+            </div>
+
+            <div>
+                <label>Data fim</label>
+                <input id="data_fim" type="date" required
+                       class="w-full px-3 py-2 border rounded">
+            </div>
+
+            <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                Gerar QR
+            </button>
+        </form>
+
+        <p id="msg" class="mt-4 text-sm"></p>
+
+    </div>
+
+</main>
+
+<script>
+const form = document.getElementById("cadastro-form");
+const msg = document.getElementById("msg");
+
+form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    msg.textContent = "Gerando...";
+
+    const payload = {
+        nome_aluno: nome_aluno.value,
+        data_inicio: data_inicio.value,
+        data_fim: data_fim.value
+    };
+
+    const req = await fetch("/api/gerar", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+    });
+
+    const data = await req.json();
+
+    if (!req.ok) {
+        msg.innerHTML = `<span class='text-red-600'>${data.erro}</span>`;
+        return;
+    }
+
+    msg.innerHTML = `
+        <span class='text-green-700 font-semibold'>Aluno cadastrado!</span><br>
+        <a href="${data.qr_code_url}" target="_blank" class="text-blue-600 underline">Ver QR</a>
+    `;
+});
+</script>
+
+</body>
+</html>
