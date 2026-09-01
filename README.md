@@ -1,73 +1,57 @@
-# Certificate Management System
+# Certifica CES
 
-Sistema web para cadastro de alunos, geração de QR Codes e emissão de certificados em PDF.
+Sistema web para emissão, gestão e validação pública de certificados com QR Code.
 
 ## Funcionalidades
 
-- autenticação de usuários com sessão;
-- cadastro e consulta de alunos;
-- busca, filtros por período e paginação;
-- geração de identificadores únicos com UUID;
-- geração de QR Codes;
-- emissão de certificados em PDF;
-- persistência local com SQLite.
+- login com sessão persistida em SQLite e proteção contra tentativas excessivas;
+- troca obrigatória da senha inicial;
+- proteção CSRF e cabeçalhos de segurança;
+- cadastro, busca, filtro, paginação, edição e exclusão de certificados;
+- QR Code com URL de validação pública;
+- certificado PDF gerado sob demanda, sem arquivos temporários públicos;
+- painel responsivo com indicadores;
+- endpoint de saúde para monitoramento;
+- importação opcional de alunos por JSON;
+- testes automatizados do fluxo principal.
 
-## Tecnologias
+## Requisitos
 
-- Node.js
-- Express 5
-- SQLite
-- Express Session
-- bcrypt
-- pdf-lib
-- QRCode
-- UUID
+- Node.js 20 ou superior;
+- npm;
+- Linux, macOS ou Windows para desenvolvimento;
+- Nginx recomendado em produção.
 
-## Estrutura principal
-
-```text
-.
-├── data/
-├── fonts/
-├── models/
-├── public/
-├── qrcodes/
-├── gerarCertificadoPDF.js
-├── importar_alunos.js
-├── server.js
-└── package.json
-```
-
-## Executando localmente
+## Executar localmente
 
 ```bash
-git clone https://github.com/marcosvitordev/sistema_certificado.git
-cd sistema_certificado
 npm install
-node server.js
 ```
 
-Depois acesse `http://localhost:3000`.
+Copie `.env.example` para `.env`, ajuste os valores e execute:
 
-## Fluxo da aplicação
+```bash
+npm start
+```
 
-1. Login do usuário.
-2. Acesso ao dashboard.
-3. Cadastro de alunos.
-4. Geração de identificador e QR Code.
-5. Consulta dos registros com busca e paginação.
-6. Geração do certificado em PDF.
+Acesse `http://localhost:3000`. Em um banco vazio, a conta é criada com `ADMIN_USERNAME` e `ADMIN_PASSWORD`, e a troca da senha será exigida no primeiro acesso.
 
-## Roadmap
+## Comandos
 
-- [ ] adicionar testes automatizados;
-- [ ] documentar o deploy;
-- [ ] melhorar validações de entrada;
-- [ ] padronizar configuração por ambiente;
-- [ ] definir uma licença para o projeto.
+```bash
+npm start                 # inicia normalmente
+npm run dev               # reinicia ao alterar arquivos
+npm test                  # executa testes de integração
+npm run check             # valida a sintaxe do backend
+npm run import -- alunos.json
+```
 
-## Autor
+O importador aceita datas `AAAA-MM-DD` ou `DD/MM/AAAA`. Registros inválidos ou com código já existente são ignorados.
 
-**Marcos Vitor** — Analista de Sistemas e Desenvolvedor Full Stack
+## Dados e backup
 
-[GitHub](https://github.com/marcosvitordev) · [Portfólio](https://marcosvitordev.netlify.app/)
+O banco fica em `data/sistema_cursos.db` e os QR Codes em `qrcodes/`. Esses diretórios, assim como `.env`, contêm dados privados e não devem ser versionados. Faça backup dos dois.
+
+## Publicação
+
+O passo a passo completo para Google Cloud Compute Engine, incluindo IP estático, `systemd`, Nginx, HTTPS e backup, está em [DEPLOY_GOOGLE_CLOUD.md](DEPLOY_GOOGLE_CLOUD.md).

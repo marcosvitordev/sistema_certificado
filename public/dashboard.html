@@ -1,69 +1,73 @@
-<!DOCTYPE html>
-<html lang="pt-br">
+<!doctype html>
+<html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <title>Dashboard – CES</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Certificados · Certifica CES</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <script src="/js/common.js" defer></script>
+  <script src="/js/dashboard.js" defer></script>
 </head>
-
-<body class="bg-gray-100">
-
-  <!-- SIDEBAR -->
-  <aside class="fixed top-0 left-0 w-64 h-full bg-gray-900 text-white p-6">
-      <h2 class="text-2xl font-bold mb-6">Sistema CES</h2>
-
-      <nav class="space-y-3">
-          <a href="/dashboard" class="block px-4 py-2 bg-gray-700 rounded">📊 Dashboard</a>
-          <a href="/cadastro" class="block px-4 py-2 hover:bg-gray-700 rounded">➕ Cadastro</a>
-
-          <form action="/logout" method="POST">
-              <button class="mt-6 w-full bg-red-600 py-2 rounded hover:bg-red-700">
-                  🚪 Sair
-              </button>
-          </form>
-      </nav>
+<body class="app-page">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand brand-light" href="/dashboard"><span class="brand-mark">C</span><span><strong>Certifica</strong><small>Gestão CES</small></span></a>
+    <nav class="nav-list" aria-label="Navegação principal">
+      <a class="active" href="/dashboard"><span>⌂</span> Certificados</a>
+      <a href="/cadastro"><span>＋</span> Novo certificado</a>
+      <a href="/configuracoes"><span>⚙</span> Configurações</a>
+      <a href="/validar" target="_blank"><span>✓</span> Página de validação</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-chip"><span class="avatar" id="user-initial">A</span><span><strong id="user-name">Administrador</strong><small id="user-login">admin</small></span></div>
+      <button class="nav-button" data-logout>Sair</button>
+    </div>
   </aside>
-
-  <main class="ml-64 p-8">
-
-      <h1 class="text-3xl font-bold mb-6">Lista de Alunos</h1>
-
-      <!-- FILTROS -->
-      <div class="flex gap-4 mb-4">
-          <input id="input-busca" type="text" placeholder="Pesquisar aluno..."
-            class="px-3 py-2 border rounded w-64">
-
-          <input id="filtro-inicio" type="date" class="px-3 py-2 border rounded">
-          <input id="filtro-fim" type="date" class="px-3 py-2 border rounded">
-
-          <button id="btn-filtrar"
-           class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-            Filtrar
-          </button>
-      </div>
-
-      <!-- TABELA -->
-      <div class="bg-white shadow rounded p-4">
-        <table class="w-full text-left border-collapse">
-          <thead>
-            <tr class="border-b bg-gray-100">
-              <th class="p-3">ID</th>
-              <th class="p-3">Aluno</th>
-              <th class="p-3">Período</th>
-              <th class="p-3">QR</th>
-              <th class="p-3 text-right">Ações</th>
-            </tr>
-          </thead>
-
-          <tbody id="lista-alunos"></tbody>
+  <main class="app-main">
+    <header class="topbar">
+      <button class="icon-button mobile-only" data-menu aria-label="Abrir menu">☰</button>
+      <div><p class="eyebrow">Visão geral</p><h1>Certificados</h1></div>
+      <a class="button primary" href="/cadastro">＋ Novo certificado</a>
+    </header>
+    <div id="password-warning" class="alert warning" hidden>Por segurança, troque a senha inicial antes de cadastrar, editar ou excluir. <a href="/configuracoes">Trocar agora</a></div>
+    <section class="stats-grid" aria-label="Resumo">
+      <article class="stat-card"><span class="stat-icon blue">▣</span><div><small>Total emitido</small><strong id="stat-total">—</strong></div></article>
+      <article class="stat-card"><span class="stat-icon green">✓</span><div><small>Períodos ativos</small><strong id="stat-active">—</strong></div></article>
+      <article class="stat-card"><span class="stat-icon amber">↗</span><div><small>Emitidos neste mês</small><strong id="stat-month">—</strong></div></article>
+    </section>
+    <section class="content-card">
+      <div class="card-heading"><div><h2>Registros emitidos</h2><p id="result-count" class="muted">Carregando...</p></div></div>
+      <form class="filters" id="filter-form">
+        <label class="search-field"><span>⌕</span><input id="search" type="search" placeholder="Buscar por aluno, código ou escola"></label>
+        <label><span class="sr-only">Data inicial</span><input id="start-date" type="date" title="Início do período"></label>
+        <label><span class="sr-only">Data final</span><input id="end-date" type="date" title="Fim do período"></label>
+        <button class="button secondary" type="submit">Filtrar</button>
+        <button class="button ghost" id="clear-filters" type="button">Limpar</button>
+      </form>
+      <div id="table-message" class="empty-state" hidden></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Aluno</th><th>Instituição</th><th>Período</th><th>Código</th><th class="actions-cell">Ações</th></tr></thead>
+          <tbody id="student-list"></tbody>
         </table>
       </div>
-
-      <div id="paginacao" class="flex gap-2 mt-6 justify-center"></div>
-
+      <footer class="pagination-row"><p id="page-info" class="muted"></p><div id="pagination" class="pagination"></div></footer>
+    </section>
   </main>
-
-  <script src="/js/dashboard.js"></script>
-
+  <dialog id="edit-dialog" class="modal">
+    <form id="edit-form" class="modal-card">
+      <header><div><p class="eyebrow">Editar registro</p><h2>Dados do certificado</h2></div><button class="icon-button" type="button" data-close aria-label="Fechar">×</button></header>
+      <input type="hidden" id="edit-id">
+      <div class="form-grid">
+        <label class="span-2">Nome do aluno<input id="edit-name" maxlength="160" required></label>
+        <label class="span-2">Instituição<input id="edit-school" maxlength="160" required></label>
+        <label>Professor<input id="edit-teacher" maxlength="160" required></label>
+        <label>Coordenador<input id="edit-coordinator" maxlength="160" required></label>
+        <label>Data de início<input id="edit-start" type="date" required></label>
+        <label>Data de término<input id="edit-end" type="date" required></label>
+      </div>
+      <div id="edit-message" class="alert" hidden></div>
+      <footer><button class="button ghost" type="button" data-close>Cancelar</button><button class="button primary" type="submit">Salvar alterações</button></footer>
+    </form>
+  </dialog>
 </body>
 </html>

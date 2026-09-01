@@ -1,0 +1,23 @@
+[Unit]
+Description=Sistema de Certificados CES
+After=network.target
+
+[Service]
+Type=simple
+User=certifica
+Group=certifica
+WorkingDirectory=/opt/certifica-ces
+EnvironmentFile=/etc/certifica-ces.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/certifica-ces/data /opt/certifica-ces/qrcodes
+
+[Install]
+WantedBy=multi-user.target

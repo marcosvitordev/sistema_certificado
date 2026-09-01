@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configurações · Certifica CES</title><link rel="stylesheet" href="/css/app.css">
+  <script src="/js/common.js" defer></script><script src="/js/configuracoes.js" defer></script>
+</head>
+<body class="app-page">
+  <aside class="sidebar" id="sidebar"><a class="brand brand-light" href="/dashboard"><span class="brand-mark">C</span><span><strong>Certifica</strong><small>Gestão CES</small></span></a><nav class="nav-list"><a href="/dashboard"><span>⌂</span> Certificados</a><a href="/cadastro"><span>＋</span> Novo certificado</a><a class="active" href="/configuracoes"><span>⚙</span> Configurações</a><a href="/validar" target="_blank"><span>✓</span> Página de validação</a></nav><div class="sidebar-footer"><div class="user-chip"><span class="avatar" id="user-initial">A</span><span><strong id="user-name">Administrador</strong><small id="user-login">admin</small></span></div><button class="nav-button" data-logout>Sair</button></div></aside>
+  <main class="app-main narrow-main"><header class="topbar"><button class="icon-button mobile-only" data-menu aria-label="Abrir menu">☰</button><div><p class="eyebrow">Conta</p><h1>Configurações</h1><p class="muted">Gerencie a segurança do seu acesso.</p></div></header>
+    <div id="required-warning" class="alert warning" hidden>Você está usando uma senha inicial. Defina uma senha exclusiva para continuar usando todas as funções.</div>
+    <section class="content-card form-card"><form id="password-form"><div class="section-heading"><span>⌁</span><div><h2>Alterar senha</h2><p>Use pelo menos 12 caracteres e evite senhas reutilizadas.</p></div></div><div class="form-grid"><label class="span-2">Senha atual<input id="current-password" type="password" autocomplete="current-password" required></label><label>Nova senha<input id="new-password" type="password" autocomplete="new-password" minlength="12" required></label><label>Confirmar nova senha<input id="confirmation" type="password" autocomplete="new-password" minlength="12" required></label></div><div id="password-message" class="alert" hidden></div><footer class="form-actions"><a class="button ghost" href="/dashboard">Voltar</a><button class="button primary" type="submit">Alterar senha</button></footer></form></section>
+  </main>
+</body></html>
