@@ -11,3 +11,6 @@ qrcodes/*.png
 coverage/
 *.log
 .DS_Store
+.next/
+playwright-report/
+test-results/

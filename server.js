@@ -2,22 +2,19 @@ require("dotenv").config();
 
 const crypto = require("crypto");
 const path = require("path");
-const fs = require("fs-extra");
 const express = require("express");
 const session = require("express-session");
 const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
 const bcrypt = require("bcrypt");
 const QRCode = require("qrcode");
-const sqlite3 = require("sqlite3");
-const { open } = require("sqlite");
+const { openDatabase, initializeSchema } = require("./database");
 
 const gerarCertificadoPDF = require("./gerarCertificadoPDF");
 
 const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, "public");
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(ROOT_DIR, "data"));
-const QR_DIR = path.resolve(process.env.QR_DIR || path.join(ROOT_DIR, "qrcodes"));
 const DB_PATH = path.resolve(process.env.DB_PATH || path.join(DATA_DIR, "sistema_cursos.db"));
 const PORT = Number(process.env.PORT || 3000);
 const NODE_ENV = process.env.NODE_ENV || "development";
@@ -92,25 +89,7 @@ function validationUrl(code) {
   return `${BASE_URL}/validar/${encodeURIComponent(code)}`;
 }
 
-function qrFullPath(relativePath) {
-  const filename = path.basename(String(relativePath || ""));
-  if (!filename) return null;
-  const resolved = path.resolve(QR_DIR, filename);
-  return resolved.startsWith(`${QR_DIR}${path.sep}`) ? resolved : null;
-}
-
-async function ensureQrCode(aluno) {
-  const fullPath = qrFullPath(aluno.qr_path);
-  if (!fullPath) throw new Error("Caminho de QR Code inválido");
-  if (!(await fs.pathExists(fullPath))) {
-    await QRCode.toFile(fullPath, validationUrl(aluno.codigo_identificacao), {
-      errorCorrectionLevel: "M", margin: 2, width: 320,
-    });
-  }
-  return fullPath;
-}
-
-class SQLiteSessionStore extends session.Store {
+class DatabaseSessionStore extends session.Store {
   async get(sid, callback) {
     try {
       const row = await db.get("SELECT sess, expired_at FROM sessions WHERE sid = ?", sid);
@@ -154,59 +133,13 @@ class SQLiteSessionStore extends session.Store {
   }
 }
 
-async function addColumnIfMissing(table, column, definition) {
-  const columns = await db.all(`PRAGMA table_info(${table})`);
-  if (!columns.some((item) => item.name === column)) {
-    await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-  }
-}
-
-async function initDb() {
+async function initDb(database) {
   if (db) return db;
-  await fs.ensureDir(DATA_DIR);
-  await fs.ensureDir(QR_DIR);
-  db = await open({ filename: DB_PATH, driver: sqlite3.Database });
-  await db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
-    PRAGMA busy_timeout = 5000;
-    CREATE TABLE IF NOT EXISTS usuarios (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nome TEXT NOT NULL,
-      username TEXT NOT NULL UNIQUE,
-      senha TEXT NOT NULL,
-      must_change_password INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS alunos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      codigo_identificacao TEXT NOT NULL UNIQUE,
-      nome_aluno TEXT NOT NULL,
-      escola TEXT NOT NULL,
-      professor TEXT NOT NULL,
-      coordenador TEXT NOT NULL,
-      data_inicio TEXT NOT NULL,
-      data_fim TEXT NOT NULL,
-      qr_path TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS sessions (
-      sid TEXT PRIMARY KEY,
-      sess TEXT NOT NULL,
-      expired_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_alunos_nome ON alunos(nome_aluno);
-    CREATE INDEX IF NOT EXISTS idx_alunos_periodo ON alunos(data_inicio, data_fim);
-    CREATE INDEX IF NOT EXISTS idx_sessions_expired ON sessions(expired_at);
-  `);
-  await addColumnIfMissing("usuarios", "must_change_password", "INTEGER NOT NULL DEFAULT 0");
-  await addColumnIfMissing("usuarios", "updated_at", "TEXT NOT NULL DEFAULT ''");
-  await addColumnIfMissing("alunos", "updated_at", "TEXT NOT NULL DEFAULT ''");
+  db = database || await openDatabase({ filename: DB_PATH });
+  await initializeSchema(db);
 
   const userCount = await db.get("SELECT COUNT(*) AS total FROM usuarios");
-  if (!userCount.total) {
+  if (Number(userCount.total) === 0) {
     const username = cleanText(process.env.ADMIN_USERNAME || "admin", 60);
     const name = cleanText(process.env.ADMIN_NAME || "Administrador", 120);
     const password = String(process.env.ADMIN_PASSWORD || "");
@@ -234,6 +167,10 @@ async function initDb() {
 const app = express();
 if (IS_PRODUCTION || process.env.TRUST_PROXY === "1") app.set("trust proxy", 1);
 app.disable("x-powered-by");
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/css/') && !req.path.startsWith('/js/')) res.set('Cache-Control', 'no-store');
+  next();
+});
 app.use(helmet({
   contentSecurityPolicy: { directives: {
     defaultSrc: ["'self'"], imgSrc: ["'self'", "data:"], styleSrc: ["'self'"],
@@ -245,7 +182,7 @@ app.use(express.urlencoded({ extended: false, limit: "32kb" }));
 app.use("/css", express.static(path.join(PUBLIC_DIR, "css"), { maxAge: IS_PRODUCTION ? "7d" : 0 }));
 app.use("/js", express.static(path.join(PUBLIC_DIR, "js"), { maxAge: IS_PRODUCTION ? "7d" : 0 }));
 app.use(session({
-  name: "ces.sid", secret: SESSION_SECRET, store: new SQLiteSessionStore(),
+  name: "ces.sid", secret: SESSION_SECRET, store: new DatabaseSessionStore(),
   resave: false, saveUninitialized: false, rolling: true,
   cookie: { httpOnly: true, secure: IS_PRODUCTION, sameSite: "lax", maxAge: 8 * 60 * 60 * 1000 },
 }));
@@ -313,27 +250,33 @@ app.get("/login", (req, res) => {
   if (req.session.user) return res.redirect("/dashboard");
   return res.sendFile(path.join(PUBLIC_DIR, "login.html"));
 });
-app.post("/login", loginLimiter, async (req, res) => {
+app.post(["/login", "/api/auth/login"], loginLimiter, async (req, res) => {
+  const json = req.path.startsWith('/api/');
+  const fail = (status, code, message) => json ? res.status(status).json({ erro: message }) : res.redirect('/login?erro=' + code);
   try {
     const username = cleanText(req.body.username, 60);
     const password = String(req.body.password || "");
     const user = username ? await db.get("SELECT * FROM usuarios WHERE username = ?", username) : null;
     const passwordOk = user ? await bcrypt.compare(password, user.senha) : false;
-    if (!user || !passwordOk) return res.redirect("/login?erro=credenciais");
+    if (!user || !passwordOk) return fail(401, "credenciais", "Usuário ou senha incorretos.");
     return req.session.regenerate((error) => {
-      if (error) return res.redirect("/login?erro=interno");
+      if (error) return fail(500, "interno", "Não foi possível entrar agora.");
       req.session.user = {
         id: user.id, nome: user.nome, username: user.username,
         must_change_password: Boolean(user.must_change_password),
       };
-      return req.session.save(() => res.redirect(user.must_change_password ? "/configuracoes" : "/dashboard"));
+      return req.session.save((error) => {
+        if (error) return fail(500, 'interno', 'Não foi possível salvar a sessão.');
+        const redirect = user.must_change_password ? '/configuracoes' : '/dashboard';
+        return json ? res.json({ sucesso: true, redirect }) : res.redirect(redirect);
+      });
     });
   } catch (error) {
     console.error("Erro no login:", error);
-    return res.redirect("/login?erro=interno");
+    return fail(500, "interno", "Não foi possível entrar agora.");
   }
 });
-app.post("/logout", authJson, verifyCsrf, (req, res) => {
+app.post(["/logout", "/api/auth/logout"], authJson, verifyCsrf, (req, res) => {
   req.session.destroy(() => {
     res.clearCookie("ces.sid");
     res.json({ sucesso: true });
@@ -363,10 +306,11 @@ app.post("/api/me/password", authJson, verifyCsrf, async (req, res) => {
 });
 
 app.get("/api/stats", authJson, async (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
   const row = await db.get(`SELECT COUNT(*) AS total,
-    SUM(CASE WHEN date(data_fim) >= date('now') THEN 1 ELSE 0 END) AS ativos,
-    SUM(CASE WHEN strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now') THEN 1 ELSE 0 END) AS novos_mes FROM alunos`);
-  res.json({ total: row.total || 0, ativos: row.ativos || 0, novos_mes: row.novos_mes || 0 });
+    SUM(CASE WHEN data_fim >= ? THEN 1 ELSE 0 END) AS ativos,
+    SUM(CASE WHEN substr(created_at, 1, 7) = ? THEN 1 ELSE 0 END) AS novos_mes FROM alunos`, today, today.slice(0, 7));
+  res.json({ total: Number(row.total || 0), ativos: Number(row.ativos || 0), novos_mes: Number(row.novos_mes || 0) });
 });
 
 app.get("/api/alunos", authJson, async (req, res) => {
@@ -385,7 +329,7 @@ app.get("/api/alunos", authJson, async (req, res) => {
   if (endDate && isValidIsoDate(endDate)) { clauses.push("data_inicio <= ?"); params.push(endDate); }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const totalRow = await db.get(`SELECT COUNT(*) AS total FROM alunos ${where}`, params);
-  const total = totalRow.total || 0;
+  const total = Number(totalRow.total || 0);
   const pages = Math.max(1, Math.ceil(total / limit));
   const currentPage = Math.min(page, pages);
   const alunos = await db.all(`SELECT * FROM alunos ${where} ORDER BY id DESC LIMIT ? OFFSET ?`, ...params, limit, (currentPage - 1) * limit);
@@ -404,21 +348,13 @@ async function createStudent(req, res) {
   const parsed = parseStudent(req.body);
   if (parsed.error) return res.status(400).json({ erro: parsed.error });
   const code = crypto.randomUUID();
-  const fileName = `qr_${normalizeFileName(parsed.student.nome_aluno)}_${code}.png`;
-  const fullPath = path.join(QR_DIR, fileName);
-  await QRCode.toFile(fullPath, validationUrl(code), { errorCorrectionLevel: "M", margin: 2, width: 320 });
-  try {
-    const result = await db.run(`INSERT INTO alunos
-      (codigo_identificacao, nome_aluno, escola, professor, coordenador, data_inicio, data_fim, qr_path)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, code, parsed.student.nome_aluno, parsed.student.escola,
-      parsed.student.professor, parsed.student.coordenador, parsed.student.data_inicio,
-      parsed.student.data_fim, `qrcodes/${fileName}`);
-    return res.status(201).json({ sucesso: true, mensagem: "Aluno e certificado cadastrados com sucesso.",
-      id: result.lastID, codigo_identificacao: code, qr_code_url: `/qr/${result.lastID}`, validacao_url: validationUrl(code) });
-  } catch (error) {
-    await fs.remove(fullPath).catch(() => {});
-    throw error;
-  }
+  const result = await db.run(`INSERT INTO alunos
+    (codigo_identificacao, nome_aluno, escola, professor, coordenador, data_inicio, data_fim, qr_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, code, parsed.student.nome_aluno, parsed.student.escola,
+    parsed.student.professor, parsed.student.coordenador, parsed.student.data_inicio,
+    parsed.student.data_fim, "");
+  return res.status(201).json({ sucesso: true, mensagem: "Aluno e certificado cadastrados com sucesso.",
+    id: result.lastID, codigo_identificacao: code, qr_code_url: `/qr/${result.lastID}`, validacao_url: validationUrl(code) });
 }
 
 app.post("/api/alunos", authJson, requirePasswordChanged, verifyCsrf, createStudent);
@@ -441,15 +377,14 @@ app.delete("/api/alunos/:id", authJson, requirePasswordChanged, verifyCsrf, asyn
   const aluno = await db.get("SELECT qr_path FROM alunos WHERE id = ?", id);
   if (!aluno) return res.status(404).json({ erro: "Aluno não encontrado." });
   await db.run("DELETE FROM alunos WHERE id = ?", id);
-  const fullPath = qrFullPath(aluno.qr_path);
-  if (fullPath) await fs.remove(fullPath).catch(() => {});
   return res.json({ sucesso: true, mensagem: "Cadastro excluído." });
 });
 
 app.get("/qr/:id", authPage, async (req, res) => {
   const aluno = await db.get("SELECT * FROM alunos WHERE id = ?", Number.parseInt(req.params.id, 10));
   if (!aluno) return res.status(404).send("QR Code não encontrado.");
-  return res.sendFile(await ensureQrCode(aluno));
+  const png = await QRCode.toBuffer(validationUrl(aluno.codigo_identificacao), { errorCorrectionLevel: 'M', margin: 2, width: 320 });
+  return res.type('png').send(png);
 });
 app.get("/certificado/:id", authPage, async (req, res) => {
   const aluno = await db.get("SELECT * FROM alunos WHERE id = ?", Number.parseInt(req.params.id, 10));
@@ -469,6 +404,11 @@ app.get("/validar", (req, res) => {
   const code = cleanText(req.query.codigo, 80);
   if (code) return res.redirect(`/validar/${encodeURIComponent(code)}`);
   return res.sendFile(path.join(PUBLIC_DIR, "validar.html"));
+});
+app.get('/api/validar/:codigo', async (req, res) => {
+  const aluno = await db.get('SELECT nome_aluno, escola, data_inicio, data_fim, codigo_identificacao FROM alunos WHERE codigo_identificacao = ?', cleanText(req.params.codigo, 80));
+  if (!aluno) return res.status(404).json({ erro: 'Certificado não encontrado.' });
+  return res.json({ aluno });
 });
 app.get("/validar/:codigo", async (req, res) => {
   const code = cleanText(req.params.codigo, 80);
@@ -491,7 +431,7 @@ app.use((error, req, res, next) => {
 async function start() {
   await initDb();
   return new Promise((resolve) => {
-    server = app.listen(PORT, "127.0.0.1", () => {
+    server = app.listen(PORT, process.env.HOST || "0.0.0.0", () => {
       console.log(`Servidor disponível em ${BASE_URL}`);
       resolve(server);
     });

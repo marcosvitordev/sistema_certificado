@@ -2,9 +2,13 @@
 
 Sistema web para emissão, gestão e validação pública de certificados com QR Code.
 
+A estrutura de hospedagem está preparada para **Vercel (Next.js) → Render (Express) → Supabase (PostgreSQL)**. Siga o [guia de publicação e migração dos dados](DEPLOY_VERCEL_RENDER_SUPABASE.md).
+
+O backend fica na raiz; o frontend Next.js fica em `frontend/`. O modo local com SQLite e as páginas anteriores continuam disponíveis.
+
 ## Funcionalidades
 
-- login com sessão persistida em SQLite e proteção contra tentativas excessivas;
+- login com sessão persistida em PostgreSQL ou SQLite e proteção contra tentativas excessivas;
 - troca obrigatória da senha inicial;
 - proteção CSRF e cabeçalhos de segurança;
 - cadastro, busca, filtro, paginação, edição e exclusão de certificados;
@@ -17,7 +21,7 @@ Sistema web para emissão, gestão e validação pública de certificados com QR
 
 ## Requisitos
 
-- Node.js 20 ou superior;
+- Node.js 22 ou superior;
 - npm;
 - Linux, macOS ou Windows para desenvolvimento;
 - Nginx recomendado em produção.
@@ -50,8 +54,8 @@ O importador aceita datas `AAAA-MM-DD` ou `DD/MM/AAAA`. Registros inválidos ou 
 
 ## Dados e backup
 
-O banco fica em `data/sistema_cursos.db` e os QR Codes em `qrcodes/`. Esses diretórios, assim como `.env`, contêm dados privados e não devem ser versionados. Faça backup dos dois.
+Sem `DATABASE_URL`, o banco local fica em `data/sistema_cursos.db`. Com `DATABASE_URL`, usuários, certificados e sessões ficam no PostgreSQL. QR Codes e PDFs são gerados em memória, sem depender de disco persistente. Preserve os backups existentes de `data/` e `qrcodes/`; esses diretórios e `.env` contêm dados privados e não devem ser versionados.
 
 ## Publicação
 
-O passo a passo completo para Google Cloud Compute Engine, incluindo IP estático, `systemd`, Nginx, HTTPS e backup, está em [DEPLOY_GOOGLE_CLOUD.md](DEPLOY_GOOGLE_CLOUD.md).
+O caminho atual está em [Vercel + Render + Supabase](DEPLOY_VERCEL_RENDER_SUPABASE.md), incluindo a migração do SQLite existente. O [guia anterior do Google Cloud](DEPLOY_GOOGLE_CLOUD.md) permanece como alternativa para o backend com as páginas locais.

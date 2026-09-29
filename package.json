@@ -7,12 +7,17 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test --test-concurrency=1",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
     "check": "node --check server.js && node --check gerarCertificadoPDF.js",
-    "import": "node scripts/importar-alunos.js"
+    "import": "node scripts/importar-alunos.js",
+    "test:postgres": "node scripts/test-postgres.js",
+    "test:e2e": "playwright test",
+    "migrate:postgres": "node scripts/migrar-postgres.js",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
@@ -24,11 +29,14 @@
     "fs-extra": "^11.4.0",
     "helmet": "^8.3.0",
     "pdf-lib": "^1.17.1",
+    "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "sqlite": "^5.1.1",
     "sqlite3": "^6.0.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@playwright/test": "^1.63.0",
     "supertest": "^7.2.2"
   }
 }

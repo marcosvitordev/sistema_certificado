@@ -24,7 +24,22 @@ let validationCode;
 
 test.before(async () => {
   await fs.mkdir(tempDir, { recursive: true });
-  await initDb();
+  if (process.env.TEST_POSTGRES === '1') {
+    const { PGlite } = require('@electric-sql/pglite');
+    const { postgresAdapter } = require('../database');
+    const client = new PGlite();
+    const adapter = postgresAdapter({
+      query: async (sql, params) => {
+        if (params === undefined) return client.exec(sql);
+        const result = await client.query(sql, params);
+        return { ...result, rowCount: result.affectedRows };
+      },
+    }, () => client.close());
+    await initDb(adapter);
+  } else {
+    delete process.env.DATABASE_URL;
+    await initDb();
+  }
   agent = request.agent(app);
 });
 
@@ -96,6 +111,26 @@ test("gera PDF protegido e exclui o cadastro", async () => {
   assert.equal(unauthenticated.headers.location, "/login");
   const pdf = await agent.get(`/certificado/${studentId}`).expect(200).expect("Content-Type", /application\/pdf/);
   assert.equal(pdf.body.subarray(0, 4).toString(), "%PDF");
+  const qr = await agent.get(`/qr/${studentId}`).expect(200).expect('Content-Type', /image\/png/);
+  assert.equal(qr.body.subarray(1, 4).toString(), 'PNG');
+  const validation = await request(app).get(`/api/validar/${validationCode}`).expect(200);
+  assert.equal(validation.body.aluno.nome_aluno, 'Aluno Atualizado');
+  assert.equal(validation.body.aluno.senha, undefined);
+  const stats = await agent.get('/api/stats').expect(200);
+  assert.equal(stats.body.total, 1);
   await agent.delete(`/api/alunos/${studentId}`).set("X-CSRF-Token", csrf).expect(200);
   await request(app).get(`/validar/${validationCode}`).expect(404);
+});
+
+test('login JSON, persistência da sessão e logout para o frontend Next.js', async () => {
+  const next = request.agent(app);
+  const invalid = await next.post('/api/auth/login').send({ username: 'admin_test', password: 'errada' }).expect(401);
+  assert.equal(invalid.body.erro, 'Usuário ou senha incorretos.');
+  const login = await next.post('/api/auth/login').send({ username: 'admin_test', password: 'SenhaNovaSegura123!' }).expect(200);
+  assert.equal(login.body.redirect, '/dashboard');
+  assert.match(login.headers['set-cookie'][0], /HttpOnly/);
+  const me = await next.get('/api/me').expect(200).expect('Cache-Control', 'no-store');
+  await next.post('/api/auth/logout').expect(403);
+  await next.post('/api/auth/logout').set('X-CSRF-Token', me.body.csrfToken).expect(200);
+  await next.get('/api/me').expect(401);
 });
